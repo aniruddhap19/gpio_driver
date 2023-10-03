@@ -1,0 +1,211 @@
+#include <linux/module.h>
+#include <linux/fs.h>
+#include <linux/kernel.h>
+#include <linux/gpio.h>
+#include <linux/device.h>
+#include <linux/kdev_t.h>
+#define device_name "driver_test"
+
+static int device_open(struct inode *,struct file *);
+static int device_close(struct inode *,struct file *);
+static ssize_t device_write(struct file *,const char *, size_t, loff_t *);
+static ssize_t device_read(struct file *,char *, size_t, loff_t *);
+static int major;
+dev_t dev = 0;
+static struct class *dev_class;
+static const char gpio_label_c[28][10] = {{"ID_SDA"},{"ID_SCL"},{"SDA1"},{"SCL1"},{"GPIO_GCLK"},{"GPIO5"},{"GPIO6"},
+{"SPI_CE1_N"},{"SPI_CE0_N"},{"SPI_MISO"},{"SPI_SCLK"},{"GPIO12"},{"GPIO12"},{"TXD1"},{"RXD1"},
+{"GPIO16"},{"GPIO17"},{"GPIO18"},{"GPIO19"},{"GPIO20"},{"GPIO21"},{"GPIO22"},{"GPIO23"},
+{"GPIO24"},{"GPIO25"},{"GPIO26"},{"GPIO27"}};
+
+
+static struct file_operations fops={
+	.write=device_write,
+	.read=device_read,
+	.open=device_open,
+	.release=device_release,
+};
+
+static struct gpio_data{
+
+	int gpio_pin;
+	int gpio_val;
+	char dir[4];
+	char gpio_nm[10];
+};
+
+static struct gpio_data un1;
+
+static int gpio_label_get(){
+	int num = un1.gpio_pin;
+	if(strncpy(un1.gpio_nm,gpio_label_c[num],10)!=un1.gpio_nm){
+		printk(KERN_ALERT "gpio Label not set")
+		return -1;
+	}
+	return 0;
+}
+
+static int gpio_initi(struct gpio un){
+	if(gpio_is_valid(un.gpio_pin)==0){
+		printk(KERN_ALERT " GPIO pin not available");
+		return -1;
+	}
+	if(gpio_request(un.gpio_pin,un.gpio_nm)<0){
+		printk(KERN_ALERT "GPIO pin cannot be requested at the moment");
+		gpio_free(un.gpio_pin);
+		return -2;
+	}
+	if(gpio_export(un.gpio_pin,true)=!0){
+		printk(KERN_ALERT "Export of gpio failed")
+		return -3;
+		gpio_free(un.gpio_pin);
+	}
+	if(strncmp(un.gpio_nm,"out",4)==0{
+		
+	}
+
+}
+
+static int device_open(struct inode *inode,struct file *file){
+	printk(KERN_INFO "device opened");
+	return 0;
+}
+
+static int device_release(struct inode *inode,struct file *file){
+	printk(KERN_INFO "device closed");
+	return 0;
+}
+
+static ssize_t device_read(struct file* filp,char __user *buffer, size_t len, loff_t * offset)
+{
+	if(un1.gpio_pin==NULL){
+		printk(KERN_ALERT "no gpio selected,write to device first\n");
+		return -1;
+	}
+	uint8_t gpio_state = 0;
+
+	len = 1;
+	if(copy_to_user(buffer,&gpio_state, len) > 0){
+	printk(KERN_ALERT " Not all the bytes have been copied to user\n");
+	return -1;
+	}
+	printk("read function : %s = %d \n",un1.gpio_nm,gpio_state);
+	return 0;
+}
+
+
+static ssize_t device_write(struct file* filp,char __user *buffer,
+			size_t len,loff_t *off){
+
+	char *p1,*p2,*p3,*p4;
+	char rec_buf[10]; 
+	if(copy_from_user(rec_buf,buffer,len)>0){
+		printk(KERN_ALERT "Not all bytes have been copied from user\n");
+		return -1;
+	}
+	int len = sizeof(rec_buf)/sizeof(rec_buf[0];
+	for(int i=0;i<len;i++){
+		if(rec_buf[i]==' '){
+			rec_buf[i]='\0';
+			p1=rec_buf;
+			p2=(rec_buf+i+1);
+			break;
+		}
+	}
+
+	for(int i=0;i<len;i++){
+		if(p2[i]==' '){
+			p2[i]='\0';
+			p3=p2;
+			p4=(p2+i+1);
+			break;
+		}
+	}
+	if(atoi(p1)>27){
+		printk(KERN_ALERT "GPIO pin out of scope\n");
+		return -2;
+	}
+	if((atoi(p4)>1)||(strncmp(p3,"out",4)!=0)||(strncmp(p3,"in",4)!=0)||(atoi(p4)<0)){
+		printk(KERN_ALERT "Invalid command\n");
+		return -3;
+	}
+
+	un1.gpio_dir=p3;
+	un1.gpio_pin=atoi(p1);
+	un1.gpio_val=atoi(p4);
+	if(gpio_label_get != 0){
+		printk(KERN_ALERT "GPIO Label not obtained\n");
+		return -3;
+	}
+	if(gpio_initi(un1) != 0){
+		printk(KERN_ALERT "GPIO PIN not accessable\n");
+		return -3;
+	}
+	
+}
+
+
+static int __init hello(){
+	major = register_chrdev(0,device_name,&fops);
+	if(major<0){
+		printk(KERN_ALERT "Device registration failed with error code %d\n",major);
+		return major;
+	}
+	dev_class = class_create(THIS_MODULE,"etx_class")
+	if(IS_ERR(dev_class)){
+		printk(KERN_ALERT "Cannot create the struct class for device\n");
+		class_destroy(dev_class);
+		unregister_chrdev(major,device_name);
+		goto err;
+	}
+	if(IS_ERR(device_create(dev_class,NULL,dev,NULL,"etx_device"))){
+		printk(KERN_ALERT "Cannot create the device\n");
+		class_destroy(dev_class);
+		unregister_chrdev(major,device_name);
+		goto err;
+	}
+	printk(KERN_INFO "Module loaded sucessfully with major number %d\n",major);
+	printk(KERN_INFO "With device name %s\n",device_name);
+	return 0;
+	err:
+	return -1;
+}
+
+
+static void __exit bye(){
+	device_destroy(dev_class,dev);
+	class_destroy(dev_class);
+	unregister_chrdev(major,device_name);
+	printk(KERN_INFO "Module has been deloaded sucessfully");
+}
+
+module_init(hello);
+module_exit(bye);
+
+MODULE_AUTHOR("Aniruddh");
+MODULE_LICENSE("GPL");
+
+
+
+
+static int __init hello(){
+major=register_chrdev(0,device_name,&fops);
+if(major<0){
+		printk(KERN_ALERT "register of chrdev has failed with error code %d\n",major);
+		return major;		
+	}
+	printk(KERN_INFO "MODULE LOADED\n");
+	printk(KERN_INFO "Major number assigned is %d\n",major);
+	printk(KERN_INFO "mknod /dev/%s c %d 0.\n",device_name,major);
+	return 0;
+}
+
+
+
+static void __exit bye(){
+
+
+printk(KERN_INFO "MODULE DELOADED");
+
+
+}
