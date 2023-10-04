@@ -1,15 +1,23 @@
 #include <linux/module.h>
+#include <linux/init.h>
+#include <linux/cdev.h>
 #include <linux/fs.h>
 #include <linux/kernel.h>
 #include <linux/gpio.h>
 #include <linux/device.h>
 #include <linux/kdev_t.h>
+#include <linux/err.h>
+#include <linux/delay.h>
+#include <linux/uaccess.h>
 #define device_name "driver_test"
 
 static int device_open(struct inode *,struct file *);
 static int device_close(struct inode *,struct file *);
 static ssize_t device_write(struct file *,const char *, size_t, loff_t *);
 static ssize_t device_read(struct file *,char *, size_t, loff_t *);
+static int device_release(struct inode *inode, struct file *file);
+static int gpio_label_get();
+static int gpio_initi();
 static int major;
 dev_t dev = 0;
 static struct class *dev_class;
@@ -20,6 +28,7 @@ static const char gpio_label_c[28][10] = {{"ID_SDA"},{"ID_SCL"},{"SDA1"},{"SCL1"
 
 
 static struct file_operations fops={
+	.owner=THIS_MODULE,
 	.write=device_write,
 	.read=device_read,
 	.open=device_open,
@@ -39,31 +48,40 @@ static struct gpio_data un1;
 static int gpio_label_get(){
 	int num = un1.gpio_pin;
 	if(strncpy(un1.gpio_nm,gpio_label_c[num],10)!=un1.gpio_nm){
-		printk(KERN_ALERT "gpio Label not set")
+		printk(KERN_ALERT "gpio Label not set");
 		return -1;
 	}
 	return 0;
 }
 
-static int gpio_initi(struct gpio un){
-	if(gpio_is_valid(un.gpio_pin)==0){
+static int gpio_initi(){
+	if(gpio_is_valid(un1.gpio_pin)==0){
 		printk(KERN_ALERT " GPIO pin not available");
 		return -1;
 	}
-	if(gpio_request(un.gpio_pin,un.gpio_nm)<0){
+	if(gpio_request(un1.gpio_pin,un1.gpio_nm)<0){
 		printk(KERN_ALERT "GPIO pin cannot be requested at the moment");
-		gpio_free(un.gpio_pin);
+		gpio_free(un1.gpio_pin);
 		return -2;
 	}
-	if(gpio_export(un.gpio_pin,true)=!0){
-		printk(KERN_ALERT "Export of gpio failed")
+	if(gpio_export(un1.gpio_pin,true)!=0){
+		printk(KERN_ALERT "Export of gpio failed");
 		return -3;
-		gpio_free(un.gpio_pin);
+		gpio_free(un1.gpio_pin);
 	}
-	if(strncmp(un.gpio_nm,"out",4)==0{
-		
+	if(strncmp(un1.dir,"in",4)==0){
+		if(gpio_direction_input(un1.gpio_pin)!=0){
+			printk(KERN_ALERT "Direction set as input failed");
+			gpio_free(un1.gpio_pin);
+			return -1;}
 	}
-
+	if(strncmp(un1.dir,"out",4)==0){
+		if(gpio_direction_output(un1.gpio_pin,un1.gpio_val)!=0){
+			printk(KERN_ALERT "Direction set as output failed");
+			gpio_free(un1.gpio_pin);
+			return -1;}
+	}
+	return 0;
 }
 
 static int device_open(struct inode *inode,struct file *file){
@@ -103,7 +121,7 @@ static ssize_t device_write(struct file* filp,char __user *buffer,
 		printk(KERN_ALERT "Not all bytes have been copied from user\n");
 		return -1;
 	}
-	int len = sizeof(rec_buf)/sizeof(rec_buf[0];
+	int len = sizeof(rec_buf)/sizeof(rec_buf[0]);
 	for(int i=0;i<len;i++){
 		if(rec_buf[i]==' '){
 			rec_buf[i]='\0';
@@ -130,18 +148,19 @@ static ssize_t device_write(struct file* filp,char __user *buffer,
 		return -3;
 	}
 
-	un1.gpio_dir=p3;
+	un1.dir=p3;
 	un1.gpio_pin=atoi(p1);
 	un1.gpio_val=atoi(p4);
 	if(gpio_label_get != 0){
 		printk(KERN_ALERT "GPIO Label not obtained\n");
 		return -3;
 	}
-	if(gpio_initi(un1) != 0){
+	if(gpio_initi() != 0){
 		printk(KERN_ALERT "GPIO PIN not accessable\n");
 		return -3;
 	}
-	
+	return 0;
+
 }
 
 
@@ -151,7 +170,7 @@ static int __init hello(){
 		printk(KERN_ALERT "Device registration failed with error code %d\n",major);
 		return major;
 	}
-	dev_class = class_create(THIS_MODULE,"etx_class")
+	dev_class = class_create(THIS_MODULE,"etx_class");
 	if(IS_ERR(dev_class)){
 		printk(KERN_ALERT "Cannot create the struct class for device\n");
 		class_destroy(dev_class);
@@ -173,6 +192,8 @@ static int __init hello(){
 
 
 static void __exit bye(){
+	gpio_unexport(un1.gpio_pin);
+	gpio_free(un1.gpio_pin);
 	device_destroy(dev_class,dev);
 	class_destroy(dev_class);
 	unregister_chrdev(major,device_name);
