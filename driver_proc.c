@@ -12,12 +12,11 @@
 #define device_name "driver_test"
 
 static int device_open(struct inode *,struct file *);
-static int device_close(struct inode *,struct file *);
 static ssize_t device_write(struct file *,const char *, size_t, loff_t *);
 static ssize_t device_read(struct file *,char *, size_t, loff_t *);
 static int device_release(struct inode *inode, struct file *file);
-static int gpio_label_get();
-static int gpio_initi();
+static int gpio_label_get(void);
+static int gpio_initi(void);
 static int major;
 dev_t dev = 0;
 static struct class *dev_class;
@@ -112,7 +111,7 @@ static ssize_t device_read(struct file* filp,char __user *buffer, size_t len, lo
 }
 
 
-static ssize_t device_write(struct file* filp,char __user *buffer,
+static ssize_t device_write(struct file* filp,const char __user *buffer,
 			size_t len,loff_t *off){
 
 	char *p1,*p2,*p3,*p4;
@@ -121,8 +120,8 @@ static ssize_t device_write(struct file* filp,char __user *buffer,
 		printk(KERN_ALERT "Not all bytes have been copied from user\n");
 		return -1;
 	}
-	int len = sizeof(rec_buf)/sizeof(rec_buf[0]);
-	for(int i=0;i<len;i++){
+	int leng = sizeof(rec_buf)/sizeof(rec_buf[0]);
+	for(int i=0;i<leng;i++){
 		if(rec_buf[i]==' '){
 			rec_buf[i]='\0';
 			p1=rec_buf;
@@ -131,7 +130,7 @@ static ssize_t device_write(struct file* filp,char __user *buffer,
 		}
 	}
 
-	for(int i=0;i<len;i++){
+	for(int i=0;i<leng;i++){
 		if(p2[i]==' '){
 			p2[i]='\0';
 			p3=p2;
@@ -148,7 +147,10 @@ static ssize_t device_write(struct file* filp,char __user *buffer,
 		return -3;
 	}
 
-	un1.dir=p3;
+	if(strncpy(un1.dir,p3,4)!=p3){
+		printk(KERN_ALERT "Failed to copy string");
+		return -2;
+	}
 	un1.gpio_pin=atoi(p1);
 	un1.gpio_val=atoi(p4);
 	if(gpio_label_get != 0){
@@ -164,7 +166,7 @@ static ssize_t device_write(struct file* filp,char __user *buffer,
 }
 
 
-static int __init hello(){
+static int __init hello(void){
 	major = register_chrdev(0,device_name,&fops);
 	if(major<0){
 		printk(KERN_ALERT "Device registration failed with error code %d\n",major);
@@ -191,7 +193,7 @@ static int __init hello(){
 }
 
 
-static void __exit bye(){
+static void __exit bye(void){
 	gpio_unexport(un1.gpio_pin);
 	gpio_free(un1.gpio_pin);
 	device_destroy(dev_class,dev);
