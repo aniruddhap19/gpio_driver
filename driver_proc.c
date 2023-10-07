@@ -44,6 +44,28 @@ static struct gpio_data{
 
 static struct gpio_data un1;
 
+static int kern_atoi(char* arr){
+	int index=0;
+	int arr1[3];
+	int sum=0;
+	while(*(arr+index)!='\0'){
+		index++;
+	}
+	for(int i=0;i<index;i++){
+		arr1[i]=(int)arr[i]-48;
+	}
+	int c=(index-1);
+	for(int i=0;i<index;i++){
+		int temp=arr1[i];
+		for(int j=c;j>0;j--){
+			temp=temp*10;
+		}
+		sum=sum+temp;
+		c--;
+	}
+	return sum;
+}
+
 static int gpio_label_get(){
 	int num = un1.gpio_pin;
 	if(strncpy(un1.gpio_nm,gpio_label_c[num],10)!=un1.gpio_nm){
@@ -138,11 +160,11 @@ static ssize_t device_write(struct file* filp,const char __user *buffer,
 			break;
 		}
 	}
-	if(atoi(p1)>27){
+	if(kern_atoi(p1)>27){
 		printk(KERN_ALERT "GPIO pin out of scope\n");
 		return -2;
 	}
-	if((atoi(p4)>1)||(strncmp(p3,"out",4)!=0)||(strncmp(p3,"in",4)!=0)||(atoi(p4)<0)){
+	if((kern_atoi(p4)>1)||(strncmp(p3,"out",4)!=0)||(strncmp(p3,"in",4)!=0)||(kern_atoi(p4)<0)){
 		printk(KERN_ALERT "Invalid command\n");
 		return -3;
 	}
@@ -151,8 +173,8 @@ static ssize_t device_write(struct file* filp,const char __user *buffer,
 		printk(KERN_ALERT "Failed to copy string");
 		return -2;
 	}
-	un1.gpio_pin=atoi(p1);
-	un1.gpio_val=atoi(p4);
+	un1.gpio_pin=kern_atoi(p1);
+	un1.gpio_val=kern_atoi(p4);
 	if(gpio_label_get != 0){
 		printk(KERN_ALERT "GPIO Label not obtained\n");
 		return -3;
